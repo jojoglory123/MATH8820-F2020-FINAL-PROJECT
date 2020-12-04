@@ -1,0 +1,54 @@
+rm(list = ls())
+
+load(file="X:/research/R scripts/ROI.RData")
+data <- as.matrix(ROI)
+set.seed(1)
+
+#### Simulate multivariate normal vector
+rmvnorm<-
+  function(n,mu,Sigma) {
+    p<-length(mu)
+    res<-matrix(0,nrow=n,ncol=p)
+    if( n>0 & p>0 ) {
+      E<-matrix(rnorm(n*p),n,p)
+      res<-t(  t(E%*%chol(Sigma)) +c(mu))
+    }
+    res
+  }
+
+
+y <- data[, 1]
+X <- data[, -1]
+n <- length(y)
+p <- dim(X)[2]
+
+pmn.beta <- rep(0, p) #prior mean of beta
+psd.beta <- rep(10, p) #prior variance of beta
+
+S <- 1000 #total iterations
+beta <- rep(0, p) #rnorm(p, 0, 1) #initial guess of beta
+acs <- 0 #accumulate the number of accepted newly proposed beta
+BETA <- matrix(0, nrow = S, ncol = p) #build structure to save beta's in each iteration
+
+
+for(s in 1:S)
+{
+  beta.p <- t(rmvnorm(1, beta, 0.001*diag(p)))
+  
+  log.r <- sum(dbinom(y, 1, exp(X %*% beta.p)/(1 + exp(X %*% beta.p)), log=T)) - sum(dbinom(y, 1, exp(X %*% beta)/(1 + exp(X %*% beta)), log=T)) + sum(dnorm(beta.p, pmn.beta, psd.beta, log=T)) - sum(dnorm(beta, pmn.beta, psd.beta, log=T)) + sum(dnorm(beta, beta.p, psd.beta, log=T)) - sum(dnorm(beta.p, beta, psd.beta, log=T)) + sum(dnorm(beta, beta.p, psd.beta, log=T)) - sum(dnorm(beta.p, beta, psd.beta, log=T))
+  
+  
+  if(log(runif(1)) < log.r){beta <- beta.p; acs<- acs +1}
+  
+  BETA[s, ] <- beta
+}
+
+#plot theta and beta's in each iteration
+plot(BETA[, 4], type = "l", xlab = "iteration", ylab = expression(paste(beta, " 3")), main = expression(paste(beta, " 3 in each iteration")))
+plot(BETA[, 51], type = "l", xlab = "iteration", ylab = expression(paste(beta, " 50")), main = expression(paste(beta, " 50 in each iteration")))
+plot(BETA[, 117], type = "l", xlab = "iteration", ylab = expression(paste(beta, " 116")), main = expression(paste(beta, " 116 in each iteration")))
+
+#calculate acceptance rate
+acs/1000
+
+#beta in 1000 iterations are saved in BETA
