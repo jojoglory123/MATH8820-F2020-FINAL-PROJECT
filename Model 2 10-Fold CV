@@ -1,0 +1,90 @@
+rm(list = ls())
+
+load(file="X:/research/R scripts/ROI.RData")
+data <- as.matrix(ROI)
+set.seed(1)
+
+#### Simulate multivariate normal vector
+rmvnorm<-
+  function(n,mu,Sigma) {
+    p<-length(mu)
+    res<-matrix(0,nrow=n,ncol=p)
+    if( n>0 & p>0 ) {
+      E<-matrix(rnorm(n*p),n,p)
+      res<-t(  t(E%*%chol(Sigma)) +c(mu))
+    }
+    res
+  }
+
+
+
+#create a frame to store correct rate and fold number
+correctrate <- data.frame(matrix(ncol = 2, nrow = 10))
+colnames(correctrate) <- c('Correct Rate', 'Fold')
+#Randomly shuffle the data
+data_shuffled <- data[sample(nrow(data)),]
+#Create 10 equally size folds
+folds <- cut(seq(1,nrow(data_shuffled)),breaks=10,labels=FALSE)
+#Perform 10 fold cross validation
+for(i in 1:10){
+  #Segement your data by fold using the which() function 
+  testIndexes <- which(folds==i,arr.ind=TRUE)
+  testData <- data_shuffled[testIndexes, ]
+  trainData <- data_shuffled[-testIndexes, ]
+  
+  y <- trainData[, 1]
+  X <- trainData[, -1]
+  n <- length(y)
+  p <- dim(X)[2]
+  
+  #set prior parameters
+  pmn.beta <- rep(0, p) #prior mean of beta
+  psd.beta <- rep(10, p) #prior variance of beta
+  
+  S <- 1000 #total iterations
+  beta <- rep(0, p) #initial guess of beta
+  acs <- 0 #accumulate the number of accepted newly proposed beta
+  BETA <- matrix(0, nrow = S, ncol = p) #build structure to save beta's in each iteration
+  
+  
+  #Use the train data to do M-H with Gibbs
+  for(s in 1:S)
+  {
+    for(t in 1:p)
+    {
+      beta.temp <- rnorm(1, beta[t], 1)
+      
+      beta.p <- beta
+      beta.p[t] <- beta.temp
+      
+      log.r <- sum(dbinom(y, 1, exp(X %*% beta.p)/(1 + exp(X %*% beta.p)), log=T)) - sum(dbinom(y, 1, exp(X %*% beta)/(1 + exp(X %*% beta)), log=T)) + sum(dnorm(beta.p, pmn.beta, psd.beta, log=T)) - sum(dnorm(beta, pmn.beta, psd.beta, log=T)) + sum(dnorm(beta, beta.p, psd.beta, log=T)) - sum(dnorm(beta.p, beta, psd.beta, log=T)) + sum(dnorm(beta, beta.p, psd.beta, log=T)) - sum(dnorm(beta.p, beta, psd.beta, log=T))
+      
+      
+      if(log(runif(1)) < log.r){beta[t] <- beta.temp; acs<- acs +1}
+    }
+    BETA[s, ] <- beta
+  }
+  
+  #Use the test data for validate
+  y_hat <- testData[, -1] %*% BETA[S, ] #predicted value (decimal numbers)
+  y_predict <- matrix(0, nrow=length(y_hat), ncol=1) #dataframe for predicted values (binary)
+  for(j in 1:length(y_hat))
+  {
+    if(y_hat[j]>=0.5){y_predict[j]=1}else{y_predict[j]=0} #now they are binary numbers
+  }
+  
+  comparison <- matrix(0, nrow=length(y_hat), ncol=1) #if predict=test, then comparision = 1
+  for(k in 1:length(y_hat))
+  {
+    if(testData[k, 1]==y_predict[k]){comparison[k]=1}else{comparison[k]=0}
+  }
+  
+  #calculate correct rate
+  rate <- mean(comparison)
+  
+  #store correct rate and iteration number
+  correctrate[i,'Correct Rate'] <- rate
+  correctrate[i,'Fold'] <- i
+}
+correctrate
+mean(correctrate[, 1])
